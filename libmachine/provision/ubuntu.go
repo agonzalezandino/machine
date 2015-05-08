@@ -175,8 +175,12 @@ func (provisioner *UbuntuProvisioner) SetOsReleaseInfo(info *OsRelease) {
 }
 
 func (provisioner *UbuntuProvisioner) GenerateDockerOptions(dockerPort int, authOptions auth.AuthOptions) (*DockerOptions, error) {
+	ip, err := provisioner.GetDriver().GetIP()
+	if err != nil {
+		return nil, err
+	}
 	defaultDaemonOpts := getDefaultDaemonOpts(provisioner.Driver.DriverName(), authOptions)
-	daemonOpts := fmt.Sprintf("--host=unix:///var/run/docker.sock --host=tcp://0.0.0.0:%d", dockerPort)
+	daemonOpts := fmt.Sprintf("--bip=172.17.42.1/16 --dns=172.17.42.1 --ip=%s --host=unix:///var/run/docker.sock --host=tcp://%s:%d", ip, ip, dockerPort)
 	daemonOptsDir := "/etc/default/docker"
 	opts := fmt.Sprintf("%s %s", defaultDaemonOpts, daemonOpts)
 	daemonCfg := fmt.Sprintf("export DOCKER_OPTS=\\\"%s\\\"", opts)
