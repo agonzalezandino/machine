@@ -7,6 +7,9 @@ import (
 	"github.com/docker/machine/drivers/openstack"
 	"github.com/docker/machine/version"
 	"github.com/rackspace/gophercloud"
+	"github.com/rackspace/gophercloud/openstack/compute/v2/extensions/keypairs"
+	"github.com/rackspace/gophercloud/openstack/compute/v2/servers"
+
 	"github.com/rackspace/gophercloud/rackspace"
 )
 
@@ -70,11 +73,92 @@ func (c *Client) GetInstanceIpAddresses(d *openstack.Driver) ([]openstack.IpAddr
 	if err != nil {
 		return nil, err
 	}
-	return []openstack.IpAddress{
-		{
-			Network:     "public",
-			Address:     server.AccessIPv4,
-			AddressType: openstack.Fixed,
-		},
-	}, nil
+
+	if err := c.InitNetworkClient(d); err != nil {
+		return nil, err
+	}
+
+	networkList, err := getNetworkList(c)
+	if err != nil {
+		return nil, err
+	}
+
+	networkName, err := networkList.getName(d.NetworkId)
+	if err != nil {
+		return nil, err
+	}
+
+	ipAddress, err := networkList.getIP(d.NetworkId, server)
+	if err != nil {
+		return nil, err
+	}
+
+	return []openstack.IpAddress{{
+		Network:     networkName,
+		Address:     ipAddress,
+		AddressType: openstack.Fixed,
+	}}, nil
+
+}
+
+func (c *Client) InitNetworkClient(d *openstack.Driver) error {
+	if c.Network != nil {
+		return nil
+	}
+
+	network, err := rackspace.NewNetworkV2(c.Provider, gophercloud.EndpointOpts{
+		Region:       d.Region,
+		Availability: c.getEndpointType(d),
+	})
+	if err != nil {
+		return err
+	}
+	c.Network = network
+	return nil
+}
+
+func (c *Client) getEndpointType(d *openstack.Driver) gophercloud.Availability {
+	switch d.EndpointType {
+	case "internalURL":
+		return gophercloud.AvailabilityInternal
+	case "adminURL":
+		return gophercloud.AvailabilityAdmin
+	}
+	return gophercloud.AvailabilityPublic
+}
+
+func (c *Client) CreateInstance(d *openstack.Driver) (string, error) {
+	serverOpts := servers.CreateOpts{
+		Name:           d.MachineName,
+		FlavorRef:      d.FlavorId,
+		ImageRef:       d.ImageId,
+		SecurityGroups: d.SecurityGroups,
+	}
+
+	if d.NetworkId != "" {
+		serverOpts.Networks = c.serverNetworks()
+	}
+
+	log.Info("Creating machine...")
+
+	server, err := servers.Create(c.Compute, keypairs.CreateOptsExt{
+		serverOpts,
+		d.KeyPairName,
+	}).Extract()
+	if err != nil {
+		return "", err
+	}
+	return server.ID, nil
+}
+
+func (c *Client) serverNetworks() []servers.Network {
+	var _networks []servers.Network = []servers.Network{}
+	_networks = append(_networks,
+		servers.Network{UUID: PublicID},
+		servers.Network{UUID: PrivateID})
+	if c.driver.NetworkId != PublicID && c.driver.NetworkId != PrivateID {
+		_networks = append(_networks, servers.Network{UUID: c.driver.NetworkId})
+	}
+	return _networks
+
 }
