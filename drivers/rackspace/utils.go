@@ -50,10 +50,11 @@ func (rn *raxNetworks) getIP(id string, s *servers.Server) (ip string, err error
 
 	if s.Addresses[_name] != nil {
 		networkAddresses := s.Addresses[_name]
-		element := networkAddresses.([]interface{})
-		if len(element) > 0 {
-			_ip := element[0].(map[string]interface{})
-			ip = _ip["addr"].(string)
+		for _, element := range networkAddresses.([]interface{}) {
+			address := element.(map[string]interface{})
+			if ok := address["version"].(float64) == 4; ok {
+				ip = address["addr"].(string)
+			}
 		}
 	}
 	return ip, err
