@@ -31,6 +31,11 @@ func configureSwarm(p Provisioner, swarmOptions swarm.Options, authOptions auth.
 		return err
 	}
 
+	hostBindAddress := swarmOptions.Address
+	if hostBindAddress == "" {
+		hostBindAddress = "0.0.0.0"
+	}
+
 	enginePort := engine.DefaultPort
 	engineURL, err := p.GetDriver().GetURL()
 	if err != nil {
@@ -88,7 +93,7 @@ func configureSwarm(p Provisioner, swarmOptions swarm.Options, authOptions auth.
 			PortBindings: map[string][]dockerclient.PortBinding{
 				fmt.Sprintf("%s/tcp", port): {
 					{
-						HostIp:   "0.0.0.0",
+						HostIp:   hostBindAddress,
 						HostPort: port,
 					},
 				},
